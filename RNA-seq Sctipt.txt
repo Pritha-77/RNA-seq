@@ -1,3 +1,5 @@
+# Reference Genome Preparation
+
 library(BSgenome.Hsapiens.UCSC.hg38)
 BSgenome.Hsapiens.UCSC.hg38
 
@@ -7,6 +9,8 @@ names(mainChrSeq) <- mainChromosomes
 mainChrSeqSet <- DNAStringSet(mainChrSeq)
 mainChrSeqSet
 writeXStringSet(mainChrSeqSet, "BSgenome.Hsapiens.UCSC.hg38")
+
+# Reference Genome indexing
 
 library(Rsubread)
 buildindex("Hg_38_mainchrs", "BSgenome.Hsapiens.UCSC.hg38", memory = 8000,
@@ -25,6 +29,8 @@ SAF <- data.frame(
   End = dfExons$end,
   Strand = dfExons$strand
 )
+
+# Genome alignment
 reads1 <- list.files(pattern = "SRR3110462_1.fastq.gz" )
 reads2 <- list.files(pattern = "SRR3110462_2.fastq.gz" )
 all.equal(length(reads1),length(reads2))
