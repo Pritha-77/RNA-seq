@@ -1,0 +1,204 @@
+library(BSgenome.Hsapiens.UCSC.hg38)
+BSgenome.Hsapiens.UCSC.hg38
+
+mainChromosomes <- paste0("chr", c(1:22, "X", "Y", "M"))
+mainChrSeq <- lapply(mainChromosomes, function(x) BSgenome.Hsapiens.UCSC.hg38[[x]])
+names(mainChrSeq) <- mainChromosomes
+mainChrSeqSet <- DNAStringSet(mainChrSeq)
+mainChrSeqSet
+writeXStringSet(mainChrSeqSet, "BSgenome.Hsapiens.UCSC.hg38")
+
+library(Rsubread)
+buildindex("Hg_38_mainchrs", "BSgenome.Hsapiens.UCSC.hg38", memory = 8000,
+           indexSplit = TRUE)
+
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+myExons <- exons(TxDb.Hsapiens.UCSC.hg38.knownGene, columns = c("tx_id", "gene_id"))
+myExons <- myExons[lengths(myExons$gene_id) == 1]
+myExons
+dfExons <- as.data.frame(myExons)
+
+SAF <- data.frame(
+  GeneID = dfExons$gene_id,
+  Chr = dfExons$seqnames,
+  Start = dfExons$start,
+  End = dfExons$end,
+  Strand = dfExons$strand
+)
+reads1 <- list.files(pattern = "SRR3110462_1.fastq.gz" )
+reads2 <- list.files(pattern = "SRR3110462_2.fastq.gz" )
+all.equal(length(reads1),length(reads2))
+
+align(index="Hg_38_mainchrs",
+      readfile1=reads1,
+      readfile2=reads2,
+      output_format = "BAM",
+      output_file = "Treg_16.bam",
+      useAnnotation = TRUE, 
+      annot.ext = SAF, 
+      isGTF = FALSE,
+      nthreads = 4)
+
+
+bam.files <- list.files(pattern = ".BAM$", full.names = TRUE) 
+bam.files
+library(Rsamtools)
+sortBam("Treg_16.bam", "Sorted_Treg_16")
+indexBam("Sorted_Treg_16.bam")
+
+#DESeq2
+
+library(Rsamtools)
+bamFilesToCount <- c("Sorted_Treg_1.bam", "Sorted_Treg_2.bam", "Sorted_Treg_3.bam", "Sorted_Treg_4.bam", "Sorted_Treg_5.bam", "Sorted_Treg_6.bam", "Sorted_Treg_7.bam", "Sorted_Treg_8.bam", "Sorted_Treg_9.bam", "Sorted_Treg_10.bam", "Sorted_Treg_11.bam", "Sorted_Treg_12.bam", "Sorted_Treg_13.bam", "Sorted_Treg_14.bam", "Sorted_Treg_15.bam", "Sorted_Treg_16.bam")
+names(bamFilesToCount) <- c("Sorted_Treg_1.bam", "Sorted_Treg_2.bam", "Sorted_Treg_3.bam", "Sorted_Treg_4.bam", "Sorted_Treg_5.bam", "Sorted_Treg_6.bam", "Sorted_Treg_7.bam", "Sorted_Treg_8.bam", "Sorted_Treg_9.bam", "Sorted_Treg_10.bam", "Sorted_Treg_11.bam", "Sorted_Treg_12.bam", "Sorted_Treg_13.bam", "Sorted_Treg_14.bam", "Sorted_Treg_15.bam", "Sorted_Treg_16.bam")
+myBams <- BamFileList(bamFilesToCount, yieldSize = 10000)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(GenomicAlignments)
+geneExons <- exonsBy(TxDb.Hsapiens.UCSC.hg38.knownGene, by = "gene")
+geneCounts <- summarizeOverlaps(geneExons, myBams, ignore.strand = TRUE)
+geneCounts
+
+seqlevelsStyle(geneExons)
+seqlevelsStyle(myBams)
+seqlengths(geneExons)
+seqlengths(myBams)
+
+library(BiocParallel)
+paramMulti <- SnowParam(workers = 2)
+paramSerial <- SerialParam()
+register(paramSerial)
+
+assay(geneCounts)[1:10, ]
+rowRanges(geneCounts)[1:2, ]
+geneCountsAsDF <- as.data.frame(assay(geneCounts))
+geneCountsAsDF[1:2, ]
+matrixOfgeneCounts <- assay(geneCounts)
+
+boxplot(matrixOfgeneCounts, las = 2, 
+        names = c("24H_DMSO", "24H_DMSO", "24H_DMSO", "24H_DMSO", 
+                  "24H_ROSA", "24H_ROSA", "24H_ROSA", "24H_ROSA", 
+                  "48H_DMSO", "48H_DMSO", "48H_DMSO", "48H_DMSO", 
+                  "48H_ROSA", "48H_ROSA", "48H_ROSA", "48H_ROSA"))
+
+library(org.Hs.eg.db)
+eToSym1 <- AnnotationDbi::select(org.Hs.eg.db,
+                                 keys = rownames(geneCountsAsDF),
+                                 keytype = "ENTREZID",
+                                 columns="SYMBOL")
+eToSym1[1:10,]
+geneCountsAnno <- merge(eToSym1,geneCountsAsDF,
+                        by.x=1,
+                        by.y=0,
+                        all.x=FALSE,
+                        all.y=TRUE)
+geneCountsAnno[1:3,]
+Genecount <- as.data.frame(geneCountsAnno)
+colnames(Genecount) <- c(colnames(Genecount)[1:2], rep(c("24H_DMSO", "24H_ROSA", "48H_DMSO", "48H_ROSA"), each = 4))
+
+library(openxlsx)
+write.xlsx(Genecount, file = "D:/NGS_Data_Analysis/RNASeq/deseq2/Genecount.xlsx")
+
+library(DESeq2)
+metaData <- data.frame(Group = c("24H_DMSO", "24H_DMSO", "24H_DMSO", "24H_DMSO", "24H_ROSA", "24H_ROSA", "24H_ROSA", "24H_ROSA", "48H_DMSO", "48H_DMSO", "48H_DMSO", "48H_DMSO", "48H_ROSA", "48H_ROSA", "48H_ROSA", "48H_ROSA" ), row.names = colnames(geneCounts))
+metaData
+
+countMatrix <- assay(geneCounts)
+
+countGRanges <- rowRanges(geneCounts)
+
+dds <- DESeqDataSetFromMatrix(countMatrix, colData = metaData, design = ~Group, rowRanges = countGRanges)
+dds
+colData(geneCounts)$Group <- metaData$Group
+geneCounts
+dds <- DESeqDataSet(geneCounts, design = ~Group)
+dds
+dds <- DESeq(dds)
+
+# Comparing 24H_DMSO and 24H_ROSA to the reference level
+contrast1 <- c("Group", "24H_ROSA", "24H_DMSO")
+# Comparing 48H_DMSO and 48H_ROSA to the reference level
+contrast2 <- c("Group", "48H_ROSA", "48H_DMSO")
+
+library(BiocParallel)
+
+myRes1 <- results(dds, contrast = contrast1)
+myRes2 <- results(dds, contrast = contrast2)
+
+plotMA(myRes1)
+myRes1 <- myRes1[order(myRes1$pvalue), ]
+myRes1[1:20, ]
+summary(myRes1)
+myRes1AsDF <- as.data.frame(myRes1)
+myRes1AsDF[1:2, ]
+table(is.na(myRes1AsDF$padj))
+
+myRes1AsDF$newPadj <- p.adjust(myRes1AsDF$pvalue)
+myRes1AsDF[1:3, ]
+myRes1AsDF <- myRes1AsDF[!is.na(myRes1AsDF$padj), ]
+myRes1AsDF <- myRes1AsDF[order(myRes1AsDF$pvalue), ]
+myRes1AsDF[1:3, ]
+library(org.Hs.eg.db)
+eToSym <- AnnotationDbi::select(org.Hs.eg.db,
+                                keys = rownames(myRes1AsDF),
+                                keytype = "ENTREZID",
+                                columns="SYMBOL")
+eToSym[1:10,]
+
+annotatedRes1 <- merge(eToSym,myRes1AsDF,
+                       by.x=1,
+                       by.y=0,
+                       all.x=FALSE,
+                       all.y=TRUE)
+annotatedRes1 <- annotatedRes1[order(annotatedRes1$pvalue),]
+annotatedRes1[1:3,]
+annotatedRes1AsDF <- as.data.frame(annotatedRes1)
+
+library(openxlsx)
+write.xlsx(annotatedRes1AsDF, file = "D:/NGS_Data_Analysis/RNASeq/deseq2/24H-deseq2.xlsx")
+
+#PCA Plot
+rlogTissue <- rlog(dds)
+rlogTissue
+rlogMatrix <- assay(rlogTissue)
+plotPCA(rlogTissue, intgroup = "Group", ntop = nrow(rlogTissue))
+pcRes <- prcomp(t(rlogMatrix))
+class(pcRes)
+pcRes$x[1:2, ]
+plot(pcRes$x, col = colData(rlogTissue)$Group, pch = 20, cex = 2)
+legend("top", legend = c("24H_DMSO", "24H_ROSA", "48H_DMSO", "48H_ROSA" ), fill = unique(colData(rlogTissue)$Group))
+pcRes$rotation[1:5, 1:4]
+PC2markers <- sort(pcRes$rotation[, 2], decreasing = FALSE)[1:100]
+PC2markers[1:10]
+
+#Volcano Plot
+df <- read_excel("24H-deseq2.xlsx")
+library(EnhancedVolcano)
+keyvals <- ifelse(df$padj <= 0.05 & df$log2FoldChange > 0, 'red',      
+                  ifelse(df$padj <= 0.05 & df$log2FoldChange < 0, 'green',
+                         'darkgrey'))                                              
+names(keyvals)[keyvals == 'red'] <- 'Upregulated'
+names(keyvals)[keyvals == 'green'] <- 'Downregulated'
+names(keyvals)[keyvals == 'darkgrey'] <- 'NS'
+
+EnhancedVolcano(df,
+                lab = rep('', nrow(df)),
+                x = 'log2FoldChange',
+                y = 'padj',
+                pCutoff = 0.05,
+                FCcutoff = 1,
+                colCustom = keyvals,      
+                pointSize = 3.0,
+                labSize = 3.5,
+                title = 'Differential Expression-24H',
+                subtitle = 'gene expression')
+				
+#Heatmap
+df_filtered <- dplyr::filter(df, padj <= 0.05)
+df_filtered <- dplyr::slice_min(df_filtered, order_by = padj, n = 50)
+library(ggplot2)
+my_colors <- c("blue", "green")
+df_filtered$foldChangeCategory <- ifelse(df_filtered$log2FoldChange < 0, "Negative", "Positive")
+ggplot(df_filtered, aes(x = padj, y = SYMBOL, color = foldChangeCategory)) +
+  geom_point(pch = 20, size = 5) +  
+  labs(x = "padj", y = "SYMBOL", color = "Fold Change Category") +
+  scale_color_manual(values = my_colors)  
