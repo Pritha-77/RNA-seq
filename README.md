@@ -2,8 +2,6 @@
 
 This repository contains a complete RNA-seq analysis pipeline using the human reference genome (hg38), from raw FASTQ files to differential expression results, annotation, and visualization.
 
-## 📁 Project Structure
-
 
 ## 🧬 Pipeline Overview
 
@@ -73,8 +71,8 @@ This repository contains a complete RNA-seq analysis pipeline using the human re
 - Reference genome installed: `BSgenome.Hsapiens.UCSC.hg38`
 
 ## 📑 Notes
-
 - Ensure paired-end FASTQ files follow standard naming convention (`*_1.fastq.gz`, `*_2.fastq.gz`)
+- Perform QC of the sample files prior to analysis, using FastQC in Python
 - SAF file is built from single-exon genes; modify if working with alternative splicing
 - To improve volcano and heatmap labeling, consider customizing with significant gene names
 
