@@ -78,4 +78,4 @@ This repository contains a complete RNA-seq analysis pipeline using the human re
 
 
 
-*Developed by [Your Name], PhD Scholar in Biotechnology*
+
