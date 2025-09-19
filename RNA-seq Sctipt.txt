@@ -1,3 +1,6 @@
+#Perform a quality check of the FASTQ files with FastQC (external, Python) before performing RNA-seq analysis
+
+
 # Reference Genome Preparation
 
 library(BSgenome.Hsapiens.UCSC.hg38)
@@ -208,3 +211,4 @@ ggplot(df_filtered, aes(x = padj, y = SYMBOL, color = foldChangeCategory)) +
   geom_point(pch = 20, size = 5) +  
   labs(x = "padj", y = "SYMBOL", color = "Fold Change Category") +
   scale_color_manual(values = my_colors)  
+
